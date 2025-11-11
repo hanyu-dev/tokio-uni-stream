@@ -1,0 +1,21 @@
+[package]
+name = "tokio-uni-stream"
+version = "0.0.0"
+edition = "2021"
+rust-version = "1.71.0"
+# === Publication info ===
+authors = ["Hantong Chen <cxwdyx620@gmail.com>"]
+categories = ["network-programming"]
+description = """
+Combines both `TcpStream` and `UnixStream` into a single `Stream` type, and provide a fallback type for non-Unix platforms.
+"""
+keywords = ["stream", "tcp", "unix", "socket", "tokio"]
+license = "MIT OR Apache-2.0"
+readme = "README.md"
+repository = "https://github.com/hanyu-dev/tokio-uni-stream"
+
+[dependencies]
+socket2 = "0.6.1"
+tokio = { version = "1.48", features = ["net", "io-util"] }
+uni-addr = { version = "0.3.0", default-features = false, features = ["feat-tokio"] }
+wrapper-lite = "0.3.2"
