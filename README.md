@@ -4,7 +4,7 @@
 [![Docs.rs](https://docs.rs/tokio-uni-stream/badge.svg)](https://docs.rs/tokio-uni-stream)
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](http://opensource.org/licenses/MIT)
 
-Combines both `TcpStream` and `UnixStream` into a single `Stream` type, and provide a fallback type for non-Unix platforms.
+Combines both `TcpStream` and `UnixStream` into a single `Stream` type, and provides a fallback type for non-Unix platforms.
 
 ## License
 
