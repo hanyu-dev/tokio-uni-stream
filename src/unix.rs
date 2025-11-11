@@ -620,7 +620,7 @@ mod splice {
     }
 
     impl OwnedReadHalf {
-        /// See [`Stream::poll_splice_drain`].
+        /// See [`UniStream::poll_splice_drain`].
         pub fn poll_splice_drain<Fd>(
             self: Pin<&mut Self>,
             cx: &mut Context<'_>,
@@ -636,7 +636,7 @@ mod splice {
     }
 
     impl OwnedWriteHalf {
-        /// See [`Stream::poll_splice_pump`].
+        /// See [`UniStream::poll_splice_pump`].
         pub fn poll_splice_pump<Fd>(
             self: Pin<&mut Self>,
             cx: &mut Context<'_>,
