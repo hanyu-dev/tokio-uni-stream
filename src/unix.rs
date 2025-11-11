@@ -2,6 +2,7 @@
 
 use std::io::Write as _;
 use std::mem::MaybeUninit;
+use std::net::Shutdown;
 use std::os::fd::{AsFd, AsRawFd, BorrowedFd, RawFd};
 use std::pin::Pin;
 use std::task::{ready, Context, Poll};
@@ -144,65 +145,6 @@ impl TryFrom<std::os::unix::net::UnixStream> for Stream {
     }
 }
 
-impl AsyncRead for Stream {
-    fn poll_read(
-        self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-        buf: &mut ReadBuf<'_>,
-    ) -> Poll<io::Result<()>> {
-        loop {
-            let mut guard = ready!(self.inner.poll_read_ready(cx))?;
-
-            #[allow(unsafe_code)]
-            let unfilled = unsafe { buf.unfilled_mut() };
-
-            match guard.try_io(|inner| inner.get_ref().recv(unfilled)) {
-                Ok(Ok(len)) => {
-                    // Advance initialized
-                    #[allow(unsafe_code)]
-                    unsafe {
-                        buf.assume_init(len);
-                    };
-
-                    // Advance filled
-                    buf.advance(len);
-
-                    return Poll::Ready(Ok(()));
-                }
-                Ok(Err(err)) => return Poll::Ready(Err(err)),
-                Err(_would_block) => {}
-            }
-        }
-    }
-}
-
-impl AsyncWrite for Stream {
-    fn poll_write(
-        self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-        buf: &[u8],
-    ) -> Poll<io::Result<usize>> {
-        loop {
-            let mut guard = ready!(self.inner.poll_write_ready(cx))?;
-
-            match guard.try_io(|inner| inner.get_ref().send(buf)) {
-                Ok(result) => return Poll::Ready(result),
-                Err(_would_block) => {},
-            }
-        }
-    }
-
-    fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
-        Poll::Ready(self.get_ref().flush())
-    }
-
-    fn poll_shutdown(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
-        self.inner.get_ref().shutdown(std::net::Shutdown::Write)?;
-
-        Poll::Ready(Ok(()))
-    }
-}
-
 impl Stream {
     #[inline]
     /// Returns the local address of this stream.
@@ -237,7 +179,7 @@ impl Stream {
 
             match guard.try_io(|inner| inner.get_ref().peek(buf)) {
                 Ok(result) => return result,
-                Err(_would_block) => {},
+                Err(_would_block) => {}
             }
         }
     }
@@ -278,8 +220,81 @@ impl Stream {
                     return Poll::Ready(Ok(len));
                 }
                 Ok(Err(err)) => return Poll::Ready(Err(err)),
-                Err(_would_block) => {},
+                Err(_would_block) => {}
             }
         }
+    }
+
+    fn poll_read_priv(&self, cx: &mut Context<'_>, buf: &mut ReadBuf<'_>) -> Poll<io::Result<()>> {
+        loop {
+            let mut guard = ready!(self.inner.poll_read_ready(cx))?;
+
+            #[allow(unsafe_code)]
+            let unfilled = unsafe { buf.unfilled_mut() };
+
+            match guard.try_io(|inner| inner.get_ref().recv(unfilled)) {
+                Ok(Ok(len)) => {
+                    // Advance initialized
+                    #[allow(unsafe_code)]
+                    unsafe {
+                        buf.assume_init(len);
+                    };
+
+                    // Advance filled
+                    buf.advance(len);
+
+                    return Poll::Ready(Ok(()));
+                }
+                Ok(Err(err)) => return Poll::Ready(Err(err)),
+                Err(_would_block) => {}
+            }
+        }
+    }
+
+    fn poll_write_priv(&self, cx: &mut Context<'_>, buf: &[u8]) -> Poll<io::Result<usize>> {
+        loop {
+            let mut guard = ready!(self.inner.poll_write_ready(cx))?;
+
+            match guard.try_io(|inner| inner.get_ref().send(buf)) {
+                Ok(result) => return Poll::Ready(result),
+                Err(_would_block) => {}
+            }
+        }
+    }
+
+    fn flush_priv(&self) -> io::Result<()> {
+        self.inner.get_ref().flush()
+    }
+
+    fn shutdown_priv(&self, shutdown: Shutdown) -> io::Result<()> {
+        self.inner.get_ref().shutdown(shutdown)
+    }
+}
+
+impl AsyncRead for Stream {
+    fn poll_read(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &mut ReadBuf<'_>,
+    ) -> Poll<io::Result<()>> {
+        self.poll_read_priv(cx, buf)
+    }
+}
+
+impl AsyncWrite for Stream {
+    fn poll_write(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &[u8],
+    ) -> Poll<io::Result<usize>> {
+        self.poll_write_priv(cx, buf)
+    }
+
+    fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        Poll::Ready(self.flush_priv())
+    }
+
+    fn poll_shutdown(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        Poll::Ready(self.shutdown_priv(Shutdown::Write))
     }
 }
