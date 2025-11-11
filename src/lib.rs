@@ -1,6 +1,6 @@
 #![doc = include_str!("../README.md")]
 
-#[cfg(any(test, not(unix)))]
+#[cfg(not(unix))]
 mod default;
 #[cfg(unix)]
 mod unix;

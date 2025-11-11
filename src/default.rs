@@ -54,3 +54,37 @@ impl TryFrom<std::net::TcpStream> for Stream {
         Ok(Self::const_from(stream.try_into()?))
     }
 }
+
+impl Stream {
+    /// See [`tokio::net::TcpStream::into_split`].
+    pub fn into_split(self) -> (OwnedReadHalf, OwnedWriteHalf) {
+        let (read_half, write_half) = self.inner.into_split();
+
+        (
+            OwnedReadHalf::const_from(read_half),
+            OwnedWriteHalf::const_from(write_half),
+        )
+    }
+}
+
+wrapper_lite::wrapper!(
+    #[wrapper_impl(Debug)]
+    #[wrapper_impl(AsRef)]
+    #[wrapper_impl(AsMut)]
+    #[wrapper_impl(BorrowMut)]
+    #[wrapper_impl(DerefMut)]
+    #[wrapper_impl(From)]
+    /// See [`tokio::net::tcp::OwnedReadHalf`].
+    pub struct OwnedReadHalf(tokio::net::tcp::OwnedReadHalf);
+);
+
+wrapper_lite::wrapper!(
+    #[wrapper_impl(Debug)]
+    #[wrapper_impl(AsRef)]
+    #[wrapper_impl(AsMut)]
+    #[wrapper_impl(BorrowMut)]
+    #[wrapper_impl(DerefMut)]
+    #[wrapper_impl(From)]
+    /// See [`tokio::net::tcp::OwnedWriteHalf`].
+    pub struct OwnedWriteHalf(tokio::net::tcp::OwnedWriteHalf);
+);

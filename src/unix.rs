@@ -5,6 +5,7 @@ use std::mem::MaybeUninit;
 use std::net::Shutdown;
 use std::os::fd::{AsFd, AsRawFd, BorrowedFd, RawFd};
 use std::pin::Pin;
+use std::sync::Arc;
 use std::task::{ready, Context, Poll};
 use std::{fmt, io};
 
@@ -225,6 +226,20 @@ impl Stream {
         }
     }
 
+    /// Splits a [`Stream`] into a read half and a write half, which can be used
+    /// to read and write the stream concurrently.
+    ///
+    /// Note: dropping the write half will shutdown the write half of the
+    /// stream.
+    pub fn into_split(self) -> (OwnedReadHalf, OwnedWriteHalf) {
+        let this = Arc::new(self);
+
+        (
+            OwnedReadHalf::const_from(this.clone()),
+            OwnedWriteHalf::const_from(this),
+        )
+    }
+
     fn poll_read_priv(&self, cx: &mut Context<'_>, buf: &mut ReadBuf<'_>) -> Poll<io::Result<()>> {
         loop {
             let mut guard = ready!(self.inner.poll_read_ready(cx))?;
@@ -296,5 +311,53 @@ impl AsyncWrite for Stream {
 
     fn poll_shutdown(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
         Poll::Ready(self.shutdown_priv(Shutdown::Write))
+    }
+}
+
+wrapper_lite::wrapper!(
+    #[wrapper_impl(AsRef<Stream>)]
+    #[derive(Debug)]
+    /// A owned read half of a [`Stream`].
+    pub struct OwnedReadHalf(Arc<Stream>);
+);
+
+impl AsyncRead for OwnedReadHalf {
+    fn poll_read(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &mut ReadBuf<'_>,
+    ) -> Poll<io::Result<()>> {
+        self.inner.poll_read_priv(cx, buf)
+    }
+}
+
+wrapper_lite::wrapper!(
+    #[wrapper_impl(AsRef<Stream>)]
+    #[derive(Debug)]
+    /// A owned write half of a [`Stream`].
+    pub struct OwnedWriteHalf(Arc<Stream>);
+);
+
+impl AsyncWrite for OwnedWriteHalf {
+    fn poll_write(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &[u8],
+    ) -> Poll<io::Result<usize>> {
+        self.inner.poll_write_priv(cx, buf)
+    }
+
+    fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        Poll::Ready(self.inner.flush_priv())
+    }
+
+    fn poll_shutdown(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        Poll::Ready(self.inner.shutdown_priv(Shutdown::Write))
+    }
+}
+
+impl Drop for OwnedWriteHalf {
+    fn drop(&mut self) {
+        let _ = self.inner.get_ref().shutdown(Shutdown::Write);
     }
 }
