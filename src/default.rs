@@ -13,29 +13,29 @@ wrapper_lite::wrapper!(
     #[wrapper_impl(From)]
     /// Oh, just a simple wrapper of [`tokio::net::TcpStream`] for non-Unix
     /// platforms.
-    pub struct Stream(tokio::net::TcpStream);
+    pub struct UniStream(tokio::net::TcpStream);
 );
 
-impl AsFd for Stream {
+impl AsFd for UniStream {
     fn as_fd(&self) -> BorrowedFd<'_> {
         self.inner.as_fd()
     }
 }
 
-impl AsRawFd for Stream {
+impl AsRawFd for UniStream {
     fn as_raw_fd(&self) -> RawFd {
         self.inner.as_raw_fd()
     }
 }
 
 #[cfg(windows)]
-impl AsSocket for Stream {
+impl AsSocket for UniStream {
     fn as_socket(&self) -> BorrowedSocket<'_> {
         self.inner.as_socket()
     }
 }
 
-impl TryFrom<std::net::TcpStream> for Stream {
+impl TryFrom<std::net::TcpStream> for UniStream {
     type Error = std::io::Error;
 
     /// Converts a standard library TCP stream into a [`Stream`].
@@ -55,7 +55,7 @@ impl TryFrom<std::net::TcpStream> for Stream {
     }
 }
 
-impl Stream {
+impl UniStream {
     /// See [`tokio::net::TcpStream::into_split`].
     pub fn into_split(self) -> (OwnedReadHalf, OwnedWriteHalf) {
         let (read_half, write_half) = self.inner.into_split();

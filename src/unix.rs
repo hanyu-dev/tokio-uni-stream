@@ -21,7 +21,7 @@ wrapper_lite::wrapper!(
     #[wrapper_impl(DerefMut)]
     /// A unified stream type that can represent either a TCP or Unix domain
     /// socket stream.
-    pub struct Stream {
+    pub struct UniStream {
         inner: AsyncFd<Socket>,
         local_addr: UniAddr,
         peer_addr: UniAddr,
@@ -29,31 +29,34 @@ wrapper_lite::wrapper!(
 );
 
 #[allow(clippy::missing_fields_in_debug)]
-impl fmt::Debug for Stream {
+impl fmt::Debug for UniStream {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Stream")
+        f.debug_struct("UniStream")
             .field("local_addr", &self.local_addr)
             .field("peer_addr", &self.peer_addr)
             .finish()
     }
 }
 
-impl AsFd for Stream {
+impl AsFd for UniStream {
+    #[inline]
     fn as_fd(&self) -> BorrowedFd<'_> {
         self.inner.as_fd()
     }
 }
 
-impl AsRawFd for Stream {
+impl AsRawFd for UniStream {
+    #[inline]
     fn as_raw_fd(&self) -> RawFd {
         self.inner.as_raw_fd()
     }
 }
 
-impl TryFrom<tokio::net::TcpStream> for Stream {
+impl TryFrom<tokio::net::TcpStream> for UniStream {
     type Error = io::Error;
 
-    /// Converts a Tokio TCP stream into a unified [`Stream`].
+    #[inline]
+    /// Converts a Tokio TCP stream into a unified [`UniStream`].
     ///
     /// # Panics
     ///
@@ -75,10 +78,11 @@ impl TryFrom<tokio::net::TcpStream> for Stream {
     }
 }
 
-impl TryFrom<tokio::net::UnixStream> for Stream {
+impl TryFrom<tokio::net::UnixStream> for UniStream {
     type Error = io::Error;
 
-    /// Converts a Tokio Unix stream into a unified [`Stream`].
+    #[inline]
+    /// Converts a Tokio Unix stream into a unified [`UniStream`].
     ///
     /// # Panics
     ///
@@ -100,10 +104,11 @@ impl TryFrom<tokio::net::UnixStream> for Stream {
     }
 }
 
-impl TryFrom<std::net::TcpStream> for Stream {
+impl TryFrom<std::net::TcpStream> for UniStream {
     type Error = io::Error;
 
-    /// Converts a standard library TCP stream into a unified [`Stream`].
+    #[inline]
+    /// Converts a standard library TCP stream into a unified [`UniStream`].
     ///
     /// # Panics
     ///
@@ -123,10 +128,11 @@ impl TryFrom<std::net::TcpStream> for Stream {
     }
 }
 
-impl TryFrom<std::os::unix::net::UnixStream> for Stream {
+impl TryFrom<std::os::unix::net::UnixStream> for UniStream {
     type Error = io::Error;
 
-    /// Converts a standard library Unix stream into a unified [`Stream`].
+    #[inline]
+    /// Converts a standard library Unix stream into a unified [`UniStream`].
     ///
     /// # Panics
     ///
@@ -146,17 +152,15 @@ impl TryFrom<std::os::unix::net::UnixStream> for Stream {
     }
 }
 
-impl Stream {
+impl UniStream {
     #[inline]
     /// Returns the local address of this stream.
-    #[must_use]
     pub const fn local_addr(&self) -> &UniAddr {
         &self.local_addr
     }
 
     #[inline]
     /// Returns the peer address of this stream.
-    #[must_use]
     pub const fn peer_addr(&self) -> &UniAddr {
         &self.peer_addr
     }
@@ -226,8 +230,9 @@ impl Stream {
         }
     }
 
-    /// Splits a [`Stream`] into a read half and a write half, which can be used
-    /// to read and write the stream concurrently.
+    #[inline]
+    /// Splits a [`UniStream`] into a read half and a write half, which can be
+    /// used to read and write the stream concurrently.
     ///
     /// Note: dropping the write half will shutdown the write half of the
     /// stream.
@@ -277,16 +282,18 @@ impl Stream {
         }
     }
 
+    #[inline]
     fn flush_priv(&self) -> io::Result<()> {
         self.inner.get_ref().flush()
     }
 
+    #[inline]
     fn shutdown_priv(&self, shutdown: Shutdown) -> io::Result<()> {
         self.inner.get_ref().shutdown(shutdown)
     }
 }
 
-impl AsyncRead for Stream {
+impl AsyncRead for UniStream {
     fn poll_read(
         self: Pin<&mut Self>,
         cx: &mut Context<'_>,
@@ -296,7 +303,7 @@ impl AsyncRead for Stream {
     }
 }
 
-impl AsyncWrite for Stream {
+impl AsyncWrite for UniStream {
     fn poll_write(
         self: Pin<&mut Self>,
         cx: &mut Context<'_>,
@@ -315,10 +322,10 @@ impl AsyncWrite for Stream {
 }
 
 wrapper_lite::wrapper!(
-    #[wrapper_impl(AsRef<Stream>)]
+    #[wrapper_impl(AsRef<UniStream>)]
     #[derive(Debug)]
-    /// A owned read half of a [`Stream`].
-    pub struct OwnedReadHalf(Arc<Stream>);
+    /// A owned read half of a [`UniStream`].
+    pub struct OwnedReadHalf(Arc<UniStream>);
 );
 
 impl AsyncRead for OwnedReadHalf {
@@ -332,10 +339,10 @@ impl AsyncRead for OwnedReadHalf {
 }
 
 wrapper_lite::wrapper!(
-    #[wrapper_impl(AsRef<Stream>)]
+    #[wrapper_impl(AsRef<UniStream>)]
     #[derive(Debug)]
-    /// A owned write half of a [`Stream`].
-    pub struct OwnedWriteHalf(Arc<Stream>);
+    /// A owned write half of a [`UniStream`].
+    pub struct OwnedWriteHalf(Arc<UniStream>);
 );
 
 impl AsyncWrite for OwnedWriteHalf {
@@ -372,9 +379,9 @@ mod splice {
 
     use rustix::pipe::{splice, SpliceFlags};
 
-    use super::{OwnedReadHalf, OwnedWriteHalf, Stream};
+    use super::{OwnedReadHalf, OwnedWriteHalf, UniStream};
 
-    impl Stream {
+    impl UniStream {
         /// `poll_splice_drain` moves data from a socket to a pipe (write end).
         ///
         /// Returns the total number of bytes drained on success.
@@ -729,7 +736,7 @@ mod splice {
             // The echo server
             tokio::spawn(async move {
                 let (accepted, peer_addr) = listener.accept().await.expect("Failed to accept");
-                let mut accepted = Stream::try_from(accepted).expect("Failed to create stream");
+                let mut accepted = UniStream::try_from(accepted).expect("Failed to create stream");
 
                 println!("Echo server accepted from {peer_addr}");
 
@@ -756,7 +763,7 @@ mod splice {
             tokio::spawn(async move {
                 let (accepted, peer_addr) =
                     relay_listener.accept().await.expect("Failed to accept");
-                let (accepted_r, accepted_w) = Stream::try_from(accepted)
+                let (accepted_r, accepted_w) = UniStream::try_from(accepted)
                     .expect("Failed to create stream")
                     .into_split();
 
@@ -764,7 +771,7 @@ mod splice {
 
                 let (target_r, target_w) = tokio::net::TcpStream::connect(server_addr)
                     .await
-                    .and_then(Stream::try_from)
+                    .and_then(UniStream::try_from)
                     .expect("Failed to connect to server")
                     .into_split();
 
@@ -781,7 +788,7 @@ mod splice {
             tokio::spawn(async move {
                 let mut stream = tokio::net::TcpStream::connect(relay_server_addr)
                     .await
-                    .and_then(Stream::try_from)
+                    .and_then(UniStream::try_from)
                     .expect("Connect error");
 
                 println!("Client connected to relay at {}", relay_server_addr);
