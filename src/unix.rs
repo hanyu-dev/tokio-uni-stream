@@ -404,7 +404,6 @@ mod splice {
     use std::io;
     use std::num::NonZeroUsize;
     use std::os::fd::AsFd;
-    use std::pin::Pin;
     use std::task::{ready, Context, Poll};
 
     use rustix::pipe::{splice, SpliceFlags};
@@ -412,54 +411,6 @@ mod splice {
     use super::{OwnedReadHalf, OwnedWriteHalf, UniStream};
 
     impl UniStream {
-        /// `poll_splice_drain` moves data from a socket to a pipe (write end).
-        ///
-        /// Returns the total number of bytes drained on success.
-        ///
-        /// # Behaviour
-        ///
-        /// Keep reading data from the socket to the pipe until either:
-        ///
-        /// - Read `bytes_to_drain` bytes.
-        /// - Partial read but read `EAGAIN` or EOF (returns the actual drained
-        ///   bytes).
-        ///
-        /// # Constraints
-        ///
-        /// - `poll_splice_drain` assumes that the pipe has at least
-        ///   `bytes_to_drain` space available for writing. This may be achieved
-        ///   by exclusively using the pipe (i.e., either writing to the pipe or
-        ///   reading from the pipe, but not reading and writing simultaneously)
-        ///   and tracking the pipe capacity, the number of bytes written/read.
-        ///
-        ///   If this constraint is violated, when the pipe is created with flag
-        ///   `O_NONBLOCK`, the readiness state of the underlying file
-        ///   descriptor would be out of sync with the tokio-side readiness
-        ///   state, which may cause the pending task to sleep forever. Of
-        ///   course you can create the pipe without `O_NONBLOCK` flag,
-        ///   but a long blocking operation in asynchronous context is still
-        ///   discouraged and you could not rely on it.
-        ///
-        /// - When error returned, the pipe shall be closed properly and no
-        ///   further `poll_splice_*` calls shall be made.
-        ///
-        /// # Errors
-        ///
-        /// See [splice(2)'s man page].
-        ///
-        /// [splice(2)'s man page]: https://man7.org/linux/man-pages/man2/splice.2.html
-        pub fn poll_splice_drain<Fd>(
-            self: Pin<&mut Self>,
-            cx: &mut Context<'_>,
-            pipe_write_fd: &Fd,
-            bytes_to_drain: NonZeroUsize,
-        ) -> Poll<io::Result<NonZeroUsize>>
-        where
-            Fd: AsFd,
-        {
-            self.poll_splice_drain_priv(cx, pipe_write_fd, bytes_to_drain)
-        }
-
         fn poll_splice_drain_priv<Fd>(
             &self,
             cx: &mut Context<'_>,
@@ -535,53 +486,6 @@ mod splice {
             }
         }
 
-        /// `poll_splice_pump` moves data from a pipe (read end) to a socket.
-        ///
-        /// Returns the total number of bytes pumped on success.
-        ///
-        /// # Behaviour
-        ///
-        /// Keep writing data from the pipe to the socket until either:
-        ///
-        /// - All `bytes_to_pump` bytes have been written.
-        /// - Partial write but write EOF (returns the actual pumped bytes).
-        ///
-        /// # Constraints
-        ///
-        /// - `poll_splice_pump` assumes that the pipe has at least
-        ///   `bytes_to_pump` bytes available for reading. This may be achieved
-        ///   by exclusively using the pipe (i.e., either writing to the pipe or
-        ///   reading from the pipe, but not reading and writing simultaneously)
-        ///   and tracking the pipe capacity, the number of bytes written/read.
-        ///
-        ///   If this constraint is violated, when the pipe is created with flag
-        ///   `O_NONBLOCK`, the readiness state of the underlying file
-        ///   descriptor would be out of sync with the tokio-side readiness
-        ///   state, which may cause the pending task to sleep forever. Of
-        ///   course you can create the pipe without `O_NONBLOCK` flag,
-        ///   but a long blocking operation in asynchronous context is still
-        ///   discouraged and you could not rely on it.
-        ///
-        /// - When error returned, the pipe shall be closed properly and no
-        ///   further `poll_splice_*` calls shall be made.
-        ///
-        /// # Errors
-        ///
-        /// See [splice(2)'s man page].
-        ///
-        /// [splice(2)'s man page]: https://man7.org/linux/man-pages/man2/splice.2.html
-        pub fn poll_splice_pump<Fd>(
-            self: Pin<&mut Self>,
-            cx: &mut Context<'_>,
-            pipe_read_fd: &Fd,
-            bytes_to_pump: NonZeroUsize,
-        ) -> Poll<io::Result<NonZeroUsize>>
-        where
-            Fd: AsFd,
-        {
-            self.poll_splice_pump_priv(cx, pipe_read_fd, bytes_to_pump)
-        }
-
         fn poll_splice_pump_priv<Fd>(
             &self,
             cx: &mut Context<'_>,
@@ -650,9 +554,44 @@ mod splice {
     }
 
     impl OwnedReadHalf {
-        /// See [`UniStream::poll_splice_drain`].
+        /// `poll_splice_drain` moves data from a socket to a pipe (write end).
+        ///
+        /// Returns the total number of bytes drained on success.
+        ///
+        /// # Behaviour
+        ///
+        /// Keep reading data from the socket to the pipe until either:
+        ///
+        /// - Read `bytes_to_drain` bytes.
+        /// - Partial read but read `EAGAIN` or EOF (returns the actual drained
+        ///   bytes).
+        ///
+        /// # Constraints
+        ///
+        /// - `poll_splice_drain` assumes that the pipe has at least
+        ///   `bytes_to_drain` space available for writing. This may be achieved
+        ///   by exclusively using the pipe (i.e., either writing to the pipe or
+        ///   reading from the pipe, but not reading and writing simultaneously)
+        ///   and tracking the pipe capacity, the number of bytes written/read.
+        ///
+        ///   If this constraint is violated, when the pipe is created with flag
+        ///   `O_NONBLOCK`, the readiness state of the underlying file
+        ///   descriptor would be out of sync with the tokio-side readiness
+        ///   state, which may cause the pending task to sleep forever. Of
+        ///   course you can create the pipe without `O_NONBLOCK` flag,
+        ///   but a long blocking operation in asynchronous context is still
+        ///   discouraged and you could not rely on it.
+        ///
+        /// - When error returned, the pipe shall be closed properly and no
+        ///   further `poll_splice_*` calls shall be made.
+        ///
+        /// # Errors
+        ///
+        /// See [splice(2)'s man page].
+        ///
+        /// [splice(2)'s man page]: https://man7.org/linux/man-pages/man2/splice.2.html
         pub fn poll_splice_drain<Fd>(
-            self: Pin<&mut Self>,
+            &mut self,
             cx: &mut Context<'_>,
             pipe_write_fd: &Fd,
             bytes_to_drain: NonZeroUsize,
@@ -666,9 +605,43 @@ mod splice {
     }
 
     impl OwnedWriteHalf {
-        /// See [`UniStream::poll_splice_pump`].
+        /// `poll_splice_pump` moves data from a pipe (read end) to a socket.
+        ///
+        /// Returns the total number of bytes pumped on success.
+        ///
+        /// # Behaviour
+        ///
+        /// Keep writing data from the pipe to the socket until either:
+        ///
+        /// - All `bytes_to_pump` bytes have been written.
+        /// - Partial write but write EOF (returns the actual pumped bytes).
+        ///
+        /// # Constraints
+        ///
+        /// - `poll_splice_pump` assumes that the pipe has at least
+        ///   `bytes_to_pump` bytes available for reading. This may be achieved
+        ///   by exclusively using the pipe (i.e., either writing to the pipe or
+        ///   reading from the pipe, but not reading and writing simultaneously)
+        ///   and tracking the pipe capacity, the number of bytes written/read.
+        ///
+        ///   If this constraint is violated, when the pipe is created with flag
+        ///   `O_NONBLOCK`, the readiness state of the underlying file
+        ///   descriptor would be out of sync with the tokio-side readiness
+        ///   state, which may cause the pending task to sleep forever. Of
+        ///   course you can create the pipe without `O_NONBLOCK` flag,
+        ///   but a long blocking operation in asynchronous context is still
+        ///   discouraged and you could not rely on it.
+        ///
+        /// - When error returned, the pipe shall be closed properly and no
+        ///   further `poll_splice_*` calls shall be made.
+        ///
+        /// # Errors
+        ///
+        /// See [splice(2)'s man page].
+        ///
+        /// [splice(2)'s man page]: https://man7.org/linux/man-pages/man2/splice.2.html
         pub fn poll_splice_pump<Fd>(
-            self: Pin<&mut Self>,
+            &mut self,
             cx: &mut Context<'_>,
             pipe_read_fd: &Fd,
             bytes_to_pump: NonZeroUsize,
@@ -712,10 +685,9 @@ mod splice {
                         to_drain.get()
                     );
 
-                    let drained =
-                        poll_fn(|cx| Pin::new(&mut r).poll_splice_drain(cx, &pipe_w, to_drain))
-                            .await
-                            .expect("Failed to splice drain");
+                    let drained = poll_fn(|cx| r.poll_splice_drain(cx, &pipe_w, to_drain))
+                        .await
+                        .expect("Failed to splice drain");
 
                     has_read += drained.get();
 
@@ -735,10 +707,9 @@ mod splice {
                         to_pump.get()
                     );
 
-                    let pumped =
-                        poll_fn(|cx| Pin::new(&mut w).poll_splice_pump(cx, &pipe_r, to_pump))
-                            .await
-                            .expect("Failed to splice pump");
+                    let pumped = poll_fn(|cx| w.poll_splice_pump(cx, &pipe_r, to_pump))
+                        .await
+                        .expect("Failed to splice pump");
 
                     has_written += pumped.get();
 
