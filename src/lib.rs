@@ -7,14 +7,145 @@ mod default;
 mod unix;
 
 use std::io;
+use std::net::{SocketAddr, ToSocketAddrs as _};
 
-use socket2::SockRef;
+pub use socket2::TcpKeepalive;
 use uni_addr::{UniAddr, UniAddrInner};
 
 #[cfg(not(unix))]
 pub use self::default::{OwnedReadHalf, OwnedWriteHalf, UniStream};
 #[cfg(unix)]
 pub use self::unix::{OwnedReadHalf, OwnedWriteHalf, UniStream};
+
+wrapper_lite::wrapper! {
+    #[wrapper_impl(Debug)]
+    #[wrapper_impl(AsRef)]
+    #[wrapper_impl(AsMut)]
+    #[wrapper_impl(DerefMut)]
+    /// Thin wrapper around [`Socket`](socket2::Socket).
+    ///
+    /// The socket is always created in non-blocking mode.
+    pub struct UniSocket {
+        /// The underlying socket.
+        inner: socket2::Socket,
+
+        #[cfg(unix)]
+        /// Whether the socket is a Unix domain socket.
+        is_unix_socket: bool,
+    }
+}
+
+impl UniSocket {
+    /// Creates a new [`UniSocket`] and bind to the specified address.
+    pub fn bind(addr: &UniAddr) -> io::Result<Self> {
+        let ty = socket2::Type::STREAM;
+
+        #[cfg(any(
+            target_os = "android",
+            target_os = "dragonfly",
+            target_os = "freebsd",
+            target_os = "fuchsia",
+            target_os = "illumos",
+            target_os = "linux",
+            target_os = "netbsd",
+            target_os = "openbsd"
+        ))]
+        let ty = ty.nonblocking();
+
+        #[cfg(unix)]
+        if let UniAddrInner::Unix(addr) = addr.as_inner() {
+            let inner = socket2::Socket::new(socket2::Domain::UNIX, ty, None)?;
+
+            #[cfg(not(any(
+                target_os = "android",
+                target_os = "dragonfly",
+                target_os = "freebsd",
+                target_os = "fuchsia",
+                target_os = "illumos",
+                target_os = "linux",
+                target_os = "netbsd",
+                target_os = "openbsd"
+            )))]
+            inner.set_nonblocking(true)?;
+
+            inner.bind(&socket2::SockAddr::unix(addr.to_os_string())?)?;
+
+            return Ok(Self {
+                inner,
+                is_unix_socket: true,
+            });
+        }
+
+        let (addr, domain) = match addr.as_inner() {
+            UniAddrInner::Inet(addr @ SocketAddr::V4(_)) => (*addr, socket2::Domain::IPV4),
+            UniAddrInner::Inet(addr @ SocketAddr::V6(_)) => (*addr, socket2::Domain::IPV6),
+            UniAddrInner::Host(addr) => {
+                // Note: we only take the first resolved address here.
+                let addr = addr
+                    .to_socket_addrs()?
+                    .next()
+                    .ok_or_else(|| io::Error::other("no addresses found"))?;
+
+                match addr {
+                    SocketAddr::V4(_) => (addr, socket2::Domain::IPV4),
+                    SocketAddr::V6(_) => (addr, socket2::Domain::IPV6),
+                }
+            }
+            _ => {
+                return Err(io::Error::new(
+                    io::ErrorKind::Other,
+                    "unsupported address type",
+                ))
+            }
+        };
+
+        let inner = socket2::Socket::new(domain, ty, Some(socket2::Protocol::TCP))?;
+
+        #[cfg(not(any(
+            target_os = "android",
+            target_os = "dragonfly",
+            target_os = "freebsd",
+            target_os = "fuchsia",
+            target_os = "illumos",
+            target_os = "linux",
+            target_os = "netbsd",
+            target_os = "openbsd"
+        )))]
+        inner.set_nonblocking(true)?;
+
+        // Set SO_REUSEADDR and SO_REUSEPORT to true for graceful restarts.
+        inner.set_reuse_address(true)?;
+
+        #[cfg(all(
+            unix,
+            not(target_os = "solaris"),
+            not(target_os = "illumos"),
+            not(target_os = "cygwin"),
+        ))]
+        inner.set_reuse_port(true)?;
+
+        inner.bind(&socket2::SockAddr::from(addr))?;
+
+        Ok(Self {
+            inner,
+            #[cfg(unix)]
+            is_unix_socket: false,
+        })
+    }
+
+    /// Calls `listen` on the underlying socket to prepare it to receive new
+    /// connections.
+    pub fn listen(self, backlog: u32) -> io::Result<UniListener> {
+        self.inner.listen(backlog as i32)?;
+
+        #[cfg(unix)]
+        if self.is_unix_socket {
+            return tokio::net::UnixListener::from_std(self.inner.into()).map(UniListener::Unix);
+        }
+
+        tokio::net::TcpListener::from_std(self.inner.into()).map(UniListener::Tcp)
+    }
+}
 
 #[derive(Debug)]
 /// A unified listener that can listen on both TCP and Unix domain sockets.
@@ -69,8 +200,9 @@ impl UniListener {
         }
     }
 
-    /// Returns a [`SockRef`] to the underlying socket for configuration.
-    pub fn as_socket_ref(&self) -> SockRef<'_> {
+    /// Returns a [`SockRef`](socket2::SockRef) to the underlying socket for
+    /// configuration.
+    pub fn as_socket_ref(&self) -> socket2::SockRef<'_> {
         match self {
             UniListener::Tcp(listener) => listener.into(),
             #[cfg(unix)]
