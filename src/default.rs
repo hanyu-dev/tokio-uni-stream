@@ -1,9 +1,6 @@
 //! A simple TCP stream wrapper for non-Unix platforms.
 
 use std::io;
-use std::os::fd::{AsFd, AsRawFd, BorrowedFd, RawFd};
-#[cfg(windows)]
-use std::os::windows::io::BorrowedSocket;
 
 use socket2::SockRef;
 use uni_addr::{UniAddr, UniAddrInner};
@@ -14,28 +11,40 @@ wrapper_lite::wrapper!(
     #[wrapper_impl(AsMut)]
     #[wrapper_impl(BorrowMut)]
     #[wrapper_impl(DerefMut)]
-    #[wrapper_impl(From)]
     /// Oh, just a simple wrapper of [`tokio::net::TcpStream`] for non-Unix
     /// platforms.
     pub struct UniStream(tokio::net::TcpStream);
 );
 
-impl AsFd for UniStream {
-    fn as_fd(&self) -> BorrowedFd<'_> {
-        self.inner.as_fd()
-    }
-}
+impl TryFrom<tokio::net::TcpStream> for UniStream {
+    type Error = io::Error;
 
-impl AsRawFd for UniStream {
-    fn as_raw_fd(&self) -> RawFd {
-        self.inner.as_raw_fd()
+    /// Converts a Tokio TCP stream into a [`UniStream`].
+    ///
+    /// # Errors
+    ///
+    /// This is infallible and always returns `Ok`, for APIs consistency.
+    fn try_from(value: tokio::net::TcpStream) -> Result<Self, Self::Error> {
+        Ok(Self::const_from(value))
     }
 }
 
 #[cfg(windows)]
-impl AsSocket for UniStream {
-    fn as_socket(&self) -> BorrowedSocket<'_> {
-        self.inner.as_socket()
+mod sys {
+    use std::os::windows::io::{AsRawSocket, AsSocket, BorrowedSocket, RawSocket};
+
+    use super::UniStream;
+
+    impl AsSocket for UniStream {
+        fn as_socket(&self) -> BorrowedSocket<'_> {
+            self.as_inner().as_socket()
+        }
+    }
+
+    impl AsRawSocket for UniStream {
+        fn as_raw_socket(&self) -> RawSocket {
+            self.as_inner().as_raw_socket()
+        }
     }
 }
 
@@ -61,6 +70,10 @@ impl TryFrom<std::net::TcpStream> for UniStream {
 
 impl UniStream {
     /// See [`tokio::net::TcpStream::connect`].
+    ///
+    /// # Errors
+    ///
+    /// See [`tokio::net::TcpStream::connect`] for possible errors.
     pub async fn connect(addr: &UniAddr) -> io::Result<Self> {
         match addr.as_inner() {
             UniAddrInner::Inet(addr) => tokio::net::TcpStream::connect(addr)
@@ -81,6 +94,7 @@ impl UniStream {
         self.as_inner().into()
     }
 
+    #[must_use]
     /// See [`tokio::net::TcpStream::into_split`].
     pub fn into_split(self) -> (OwnedReadHalf, OwnedWriteHalf) {
         let (read_half, write_half) = self.inner.into_split();

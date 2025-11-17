@@ -1,5 +1,7 @@
 #![doc = include_str!("../README.md")]
 #![allow(clippy::multiple_inherent_impl)]
+#![allow(clippy::must_use_candidate)]
+#![allow(unknown_lints)]
 
 #[cfg(not(unix))]
 mod default;
@@ -37,6 +39,11 @@ wrapper_lite::wrapper! {
 
 impl UniSocket {
     /// Creates a new [`UniSocket`] and bind to the specified address.
+    ///
+    /// # Errors
+    ///
+    /// See [`socket2::Socket::new`] and [`socket2::Socket::bind`] for possible
+    /// errors.
     pub fn bind(addr: &UniAddr) -> io::Result<Self> {
         let ty = socket2::Type::STREAM;
 
@@ -84,7 +91,7 @@ impl UniSocket {
                 let addr = addr
                     .to_socket_addrs()?
                     .next()
-                    .ok_or_else(|| io::Error::other("no addresses found"))?;
+                    .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "no addresses found"))?;
 
                 match addr {
                     SocketAddr::V4(_) => (addr, socket2::Domain::IPV4),
@@ -135,7 +142,13 @@ impl UniSocket {
 
     /// Calls `listen` on the underlying socket to prepare it to receive new
     /// connections.
+    ///
+    /// # Errors
+    ///
+    /// See [`socket2::Socket::listen`], [`tokio::net::TcpListener::from_std`],
+    /// and [`tokio::net::UnixListener::from_std`] for possible errors.
     pub fn listen(self, backlog: u32) -> io::Result<UniListener> {
+        #[allow(clippy::cast_possible_wrap)]
         self.inner.listen(backlog as i32)?;
 
         #[cfg(unix)]
@@ -173,6 +186,11 @@ impl UniListener {
     /// returns the listener. If none of the addresses succeed in creating a
     /// listener, the error returned from the last attempt (the last
     /// address) is returned.
+    ///
+    /// # Errors
+    ///
+    /// See [`tokio::net::TcpListener::bind`] and
+    /// [`tokio::net::UnixListener::bind`] for possible errors.
     pub async fn bind(addr: &UniAddr) -> io::Result<Self> {
         match addr.as_inner() {
             UniAddrInner::Inet(addr) => tokio::net::TcpListener::bind(addr).await.map(Self::Tcp),
@@ -192,6 +210,11 @@ impl UniListener {
     ///
     /// This can be useful, for example, when binding to port 0 to figure out
     /// which port was actually bound
+    ///
+    /// # Errors
+    ///
+    /// See [`tokio::net::TcpListener::local_addr`] and
+    /// [`tokio::net::UnixListener::local_addr`] for possible errors.
     pub fn local_addr(&self) -> io::Result<UniAddr> {
         match self {
             UniListener::Tcp(listener) => listener.local_addr().map(UniAddr::from),
@@ -222,6 +245,11 @@ impl UniListener {
     /// `tokio::select!` statement and some other branch completes first, then
     /// it is guaranteed that no new connections were accepted by this
     /// method.
+    ///
+    /// # Errors
+    ///
+    /// See [`tokio::net::TcpListener::accept`] and
+    /// [`tokio::net::UnixListener::accept`] for possible errors.
     pub async fn accept(&self) -> io::Result<(UniStream, UniAddr)> {
         match self {
             UniListener::Tcp(listener) => {

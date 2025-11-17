@@ -160,6 +160,11 @@ impl UniStream {
     /// the addresses until a connection is successful. If none of the
     /// addresses result in a successful connection, the error returned from
     /// the last connection attempt (the last address) is returned.
+    ///
+    /// # Errors
+    ///
+    /// See [`tokio::net::TcpStream::connect`] and
+    /// [`tokio::net::UnixStream::connect`] for possible errors.
     pub async fn connect(addr: &UniAddr) -> io::Result<Self> {
         match addr.as_inner() {
             UniAddrInner::Inet(addr) => tokio::net::TcpStream::connect(addr)
@@ -261,6 +266,7 @@ impl UniStream {
     }
 
     #[inline]
+    #[must_use]
     /// Splits a [`UniStream`] into a read half and a write half, which can be
     /// used to read and write the stream concurrently.
     ///
