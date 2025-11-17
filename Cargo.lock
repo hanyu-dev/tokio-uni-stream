@@ -183,9 +183,9 @@ dependencies = [
 
 [[package]]
 name = "uni-addr"
-version = "0.3.2"
+version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0a9e34a0d6ce10adda9a6c14e248d8787014d24a82068f36aa4b39522683f56a"
+checksum = "511e5094c837830160c0643ef7e4818e02d7cd9f71dfbfc24bfaab703e700ab3"
 dependencies = [
  "tokio",
  "wrapper-lite",
