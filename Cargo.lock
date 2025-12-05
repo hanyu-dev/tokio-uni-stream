@@ -327,21 +327,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "tokio-uni-stream"
-version = "0.0.9"
-dependencies = [
- "libc",
- "network-interface",
- "rstest",
- "socket2",
- "tokio",
- "tokio-splice2",
- "tokio-uni-stream",
- "uni-addr",
- "wrapper-lite",
-]
-
-[[package]]
 name = "uni-addr"
 version = "0.3.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -349,6 +334,21 @@ checksum = "2d8a68dd091de0e5a32dd9181a11730f7e2eed73ad14c26afc323ada19b44c57"
 dependencies = [
  "socket2",
  "tokio",
+ "wrapper-lite",
+]
+
+[[package]]
+name = "uni-socket"
+version = "0.0.0"
+dependencies = [
+ "libc",
+ "network-interface",
+ "rstest",
+ "socket2",
+ "tokio",
+ "tokio-splice2",
+ "uni-addr",
+ "uni-socket",
  "wrapper-lite",
 ]
 

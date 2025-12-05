@@ -4,9 +4,9 @@
 use std::mem::MaybeUninit;
 
 use rstest::rstest;
-use tokio_uni_stream::UniSocket;
-// use tokio_uni_stream::windows::UniSocket;
+// use uni_socket::windows::UniSocket;
 use uni_addr::UniAddr;
+use uni_socket::UniSocket;
 
 #[cfg(any(
     target_os = "ios",
@@ -27,7 +27,7 @@ async fn test_UniSocket_bind_device(
     #[values(true, false)] device: bool,
 ) {
     use network_interface::NetworkInterfaceConfig;
-    use tokio_uni_stream::unix::UniSocket;
+    use uni_socket::unix::UniSocket;
 
     let addr = UniAddr::new(addr).unwrap();
 

@@ -1,18 +1,17 @@
 [package]
-name = "tokio-uni-stream"
-version = "0.0.9"
+name = "uni-socket"
+version = "0.0.0"
 edition = "2021"
 rust-version = "1.71.0"
-# === Publication info ===
 authors = ["Hantong Chen <cxwdyx620@gmail.com>"]
 categories = ["network-programming"]
 description = """
-Combines both `TcpStream` and `UnixStream` into a single `UniStream` type, and provides a fallback type for non-Unix platforms.
+Cross-platform network socket abstraction providing a unified API for both TCP and Unix Domain Sockets.
 """
-keywords = ["stream", "tcp", "unix", "socket", "tokio"]
+keywords = ["socket", "tcp", "unix", "stream", "tokio"]
 license = "MIT OR Apache-2.0"
 readme = "README.md"
-repository = "https://github.com/hanyu-dev/tokio-uni-stream"
+repository = "https://github.com/hanyu-dev/uni-socket"
 
 [package.metadata.docs.rs]
 features = ["splice"]
@@ -20,7 +19,7 @@ targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
 libc = "0.2.178"
-socket2 = "0.6.1"
+socket2 = { version = "0.6.1", features = ["all"] }
 tokio = { version = "1.48.0", features = ["net", "time"] }
 tokio-splice2 = { version = "0.3.2", optional = true }
 uni-addr = { version = "0.3.6", default-features = false, features = ["feat-tokio", "feat-socket2"] }
@@ -32,16 +31,13 @@ rstest = { version = "0.26.1", default-features = false }
 tokio = { version = "1.48.0", features = ["io-util", "macros", "rt"] }
 
 [target.'cfg(target_os = "linux")'.dev-dependencies]
-tokio-uni-stream = { path = ".", features = ["splice"] }
+uni-socket = { path = ".", features = ["splice"] }
 
 [features]
-default = ["all"]
+default = []
 
-# Enable `splice(2)` support on Unix platforms.
+# Enable `splice(2)` support. (TODO: can we merge the splice implementation here?)
 splice = ["dep:tokio-splice2"]
-
-# `socket2`'s feature `all`
-all = ["socket2/all"]
 
 [lints]
 clippy.allow_attributes_without_reason = "warn"
