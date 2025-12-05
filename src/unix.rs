@@ -22,6 +22,12 @@ pub struct UniSocket<Ty = ()> {
     ty: PhantomData<Ty>,
 }
 
+impl fmt::Debug for UniSocket {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("UniSocket").field(&self.inner).finish()
+    }
+}
+
 impl<Ty> AsFd for UniSocket<Ty> {
     #[inline]
     fn as_fd(&self) -> BorrowedFd<'_> {
@@ -205,8 +211,7 @@ impl<Ty> UniSocket<Ty> {
     /// Mark a socket as ready to accept incoming connection requests using
     /// [`UniListener::accept`].
     ///
-    /// This function directly corresponds to the `listen(2)` function on
-    /// Windows and Unix.
+    /// This function directly corresponds to the `listen(2)` function on Unix.
     ///
     /// An error will be returned if `listen` or `connect` has already been
     /// called on this builder.
@@ -220,8 +225,7 @@ impl<Ty> UniSocket<Ty> {
     /// Initiates and completes a connection on this socket to the specified
     /// address.
     ///
-    /// This function directly corresponds to the `connect(2)` function on
-    /// Windows and Unix.
+    /// This function directly corresponds to the `connect(2)` function on Unix.
     ///
     /// An error will be returned if `connect` has already been called.
     pub async fn connect(self, addr: &UniAddr) -> io::Result<UniStream> {
@@ -255,7 +259,7 @@ impl<Ty> UniSocket<Ty> {
     /// # Notes
     ///
     /// Depending on the OS this may return an error if the socket is not
-    /// [bound](Socket::bind).
+    /// [bound](Self::bind).
     pub fn local_addr(&self) -> io::Result<UniAddr> {
         self.inner
             .get_ref()
@@ -263,8 +267,7 @@ impl<Ty> UniSocket<Ty> {
             .and_then(TryFrom::try_from)
     }
 
-    /// Returns a [`SockRef`] to a [`Socket`] that can be used to configure
-    /// socket types other than the [`Socket`] type itself.
+    /// Returns a [`SockRef`] to the underlying socket for configuration.
     pub fn as_socket_ref(&self) -> SockRef<'_> {
         SockRef::from(&self.inner)
     }
@@ -577,12 +580,12 @@ impl UniStream {
     /// Returns the socket address of the remote peer of this socket.
     ///
     /// This function directly corresponds to the `getpeername(2)` function on
-    /// Windows and Unix.
+    /// Unix.
     ///
     /// # Notes
     ///
     /// This returns an error if the socket is not
-    /// [`connect`ed](Socket::connect).
+    /// [`connect`ed](UniSocket::connect).
     pub fn peer_addr(&self) -> io::Result<UniAddr> {
         self.inner.get_ref().peer_addr().and_then(TryFrom::try_from)
     }
@@ -615,7 +618,7 @@ impl UniStream {
     /// the waker from the [`Context`] passed to the most recent call is
     /// scheduled to receive a wakeup. Unless you are implementing your own
     /// future accepting connections, you probably want to use the asynchronous
-    /// [`accept`](Self::accept) method instead.
+    /// [`accept`](UniListener::accept) method instead.
     pub fn poll_peek(
         self: Pin<&mut Self>,
         cx: &mut Context<'_>,

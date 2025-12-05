@@ -61,8 +61,8 @@ async fn test_UniSocket_bind_device(
 }
 
 #[rstest]
-#[case("0.0.0.0:0")]
-#[case("[::]:0")]
+#[case("127.0.0.1:0")]
+#[case("[::1]:0")]
 #[cfg_attr(unix, case("unix:///tmp/test_echo.sock"))]
 #[cfg_attr(
     any(target_os = "android", target_os = "linux"),
@@ -200,8 +200,8 @@ async fn test_echo(#[case] addr: &str) {
 }
 
 #[rstest]
-#[case("0.0.0.0:0")]
-#[case("[::]:0")]
+#[case("127.0.0.1:0")]
+#[case("[::1]:0")]
 #[cfg_attr(unix, case("unix:///tmp/test_echo_poll.sock"))]
 #[cfg_attr(
     any(target_os = "android", target_os = "linux"),

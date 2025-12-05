@@ -22,7 +22,7 @@ pub struct UniSocket {
 
 impl fmt::Debug for UniSocket {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("UniSocket").finish()
+        f.debug_tuple("UniSocket").field(&self.inner).finish()
     }
 }
 
@@ -75,10 +75,7 @@ impl UniSocket {
     /// [`UniListener::accept`].
     ///
     /// This function directly corresponds to the `listen(2)` function on
-    /// Windows and Unix.
-    ///
-    /// An error will be returned if `listen` or `connect` has already been
-    /// called on this builder.
+    /// Windows.
     pub fn listen(self, backlog: u32) -> io::Result<UniListener> {
         self.inner.listen(backlog).map(UniListener::from_inner)
     }
@@ -87,9 +84,7 @@ impl UniSocket {
     /// address.
     ///
     /// This function directly corresponds to the `connect(2)` function on
-    /// Windows and Unix.
-    ///
-    /// An error will be returned if `connect` has already been called.
+    /// Windows.
     pub async fn connect(self, addr: &UniAddr) -> io::Result<UniStream> {
         match addr.as_inner() {
             UniAddrInner::Inet(addr) => self.inner.connect(*addr).await.map(UniStream::from_inner),
@@ -108,7 +103,7 @@ impl UniSocket {
     /// # Notes
     ///
     /// Depending on the OS this may return an error if the socket is not
-    /// [bound](Socket::bind).
+    /// [bound](Self::bind).
     pub fn local_addr(&self) -> io::Result<UniAddr> {
         self.inner.local_addr().map(UniAddr::from)
     }
@@ -127,7 +122,7 @@ wrapper_lite::wrapper!(
 impl fmt::Debug for UniListener {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("UniListener")
-            .field("local_addr", &self.inner.local_addr())
+            .field("local_addr", &self.local_addr().ok())
             .finish()
     }
 }
@@ -219,7 +214,7 @@ impl UniListener {
     /// # Notes
     ///
     /// Depending on the OS this may return an error if the socket is not
-    /// [bound](Socket::bind).
+    /// [bound](UniSocket::bind).
     pub fn local_addr(&self) -> io::Result<UniAddr> {
         self.inner.local_addr().map(UniAddr::from)
     }
@@ -234,6 +229,15 @@ wrapper_lite::wrapper!(
     /// A simple wrapper of [`tokio::net::TcpStream`].
     pub struct UniStream(tokio::net::TcpStream);
 );
+
+impl fmt::Debug for UniStream {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("UniStream")
+            .field("local_addr", &self.local_addr().ok())
+            .field("peer_addr", &self.peer_addr().ok())
+            .finish()
+    }
+}
 
 impl TryFrom<tokio::net::TcpStream> for UniStream {
     type Error = io::Error;
@@ -251,7 +255,7 @@ impl TryFrom<tokio::net::TcpStream> for UniStream {
 impl TryFrom<std::net::TcpStream> for UniStream {
     type Error = std::io::Error;
 
-    /// Converts a standard library TCP stream into a [`Stream`].
+    /// Converts a standard library TCP stream into a [`UniStream`].
     ///
     /// # Panics
     ///
@@ -269,34 +273,15 @@ impl TryFrom<std::net::TcpStream> for UniStream {
 }
 
 impl UniStream {
-    /// Initiates and completes a connection on this socket to the specified
-    /// address.
-    ///
-    /// This function directly corresponds to the `connect(2)` function on
-    /// Windows and Unix.
-    ///
-    /// An error will be returned if `connect` has already been called.
-    pub async fn connect(self, addr: &UniAddr) -> io::Result<UniStream> {
-        match addr.as_inner() {
-            UniAddrInner::Inet(addr) => tokio::net::TcpStream::connect(*addr)
-                .await
-                .map(UniStream::from_inner),
-            _ => Err(io::Error::new(
-                io::ErrorKind::Other,
-                "unsupported address type",
-            )),
-        }
-    }
-
     /// Returns the socket address of the local half of this socket.
     ///
     /// This function directly corresponds to the `getsockname(2)` function on
-    /// Windows and Unix.
+    /// Windows.
     ///
     /// # Notes
     ///
     /// Depending on the OS this may return an error if the socket is not
-    /// [bound](Socket::bind).
+    /// [bound](UniSocket::bind).
     pub fn local_addr(&self) -> io::Result<UniAddr> {
         self.inner.local_addr().map(UniAddr::from)
     }
@@ -309,7 +294,7 @@ impl UniStream {
     /// # Notes
     ///
     /// This returns an error if the socket is not
-    /// [`connect`ed](Socket::connect).
+    /// [`connect`ed](UniSocket::connect).
     pub fn peer_addr(&self) -> io::Result<UniAddr> {
         self.inner.peer_addr().map(UniAddr::from)
     }
@@ -340,18 +325,13 @@ impl UniStream {
     /// the waker from the [`Context`] passed to the most recent call is
     /// scheduled to receive a wakeup. Unless you are implementing your own
     /// future accepting connections, you probably want to use the asynchronous
-    /// [`accept`](Self::accept) method instead.
+    /// [`accept`](UniListener::accept) method instead.
     pub fn poll_peek(
         self: Pin<&mut Self>,
         cx: &mut Context<'_>,
         buf: &mut ReadBuf<'_>,
     ) -> Poll<io::Result<usize>> {
         self.get_mut().inner.poll_peek(cx, buf)
-    }
-
-    /// Returns a [`SockRef`] to the underlying socket for configuration.
-    pub fn as_socket_ref(&self) -> SockRef<'_> {
-        SockRef::from(&self.inner)
     }
 
     #[inline]
@@ -390,6 +370,11 @@ impl UniStream {
     /// See [`tokio::net::TcpStream::into_split`].
     pub fn into_split(self) -> (OwnedReadHalf, OwnedWriteHalf) {
         self.inner.into_split()
+    }
+
+    /// Returns a [`SockRef`] to the underlying socket for configuration.
+    pub fn as_socket_ref(&self) -> SockRef<'_> {
+        SockRef::from(&self.inner)
     }
 }
 
