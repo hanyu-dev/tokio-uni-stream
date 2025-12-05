@@ -19,14 +19,17 @@ features = ["splice"]
 targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
+libc = "0.2.178"
 socket2 = "0.6.1"
-tokio = { version = "1.48", features = ["net", "io-util"] }
+tokio = { version = "1.48.0", features = ["net", "time"] }
 tokio-splice2 = { version = "0.3.2", optional = true }
-uni-addr = { version = "0.3.4", default-features = false, features = ["feat-tokio"] }
-wrapper-lite = "0.3.2"
+uni-addr = { version = "0.3.6", default-features = false, features = ["feat-tokio", "feat-socket2"] }
+wrapper-lite = "0.4.0"
 
-# [dev-dependencies]
-# tokio = { version = "1.48", features = ["macros", "net", "io-util", "rt"] }
+[dev-dependencies]
+network-interface = "2.0.3"
+rstest = { version = "0.26.1", default-features = false }
+tokio = { version = "1.48.0", features = ["io-util", "macros", "rt"] }
 
 [target.'cfg(target_os = "linux")'.dev-dependencies]
 tokio-uni-stream = { path = ".", features = ["splice"] }
