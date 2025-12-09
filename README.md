@@ -5,10 +5,10 @@
 [![Docs.rs](https://docs.rs/uni-socket/badge.svg)](https://docs.rs/uni-socket)
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](http://opensource.org/licenses/MIT)
 
-Cross-platform network socket abstraction providing a unified API for both TCP and Unix Domain Sockets.
+Async TCP / Unix Domain Socket abstraction, cross platform development friendly.
 
 > [!WARNING]
-> This crate is still in early development. The API may change significantly.
+> This crate is still under early development stage.
 
 ## License
 

@@ -2,11 +2,13 @@
 #![allow(non_snake_case)]
 
 use std::mem::MaybeUninit;
+use std::time::Duration;
 
 use rstest::rstest;
+use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 // use uni_socket::windows::UniSocket;
 use uni_addr::UniAddr;
-use uni_socket::UniSocket;
+use uni_socket::{UniListener, UniSocket};
 
 #[cfg(any(
     target_os = "ios",
@@ -285,4 +287,120 @@ async fn test_echo_poll(#[case] addr: &str) {
     });
 
     tokio::try_join!(server, client).unwrap();
+}
+
+#[rstest]
+#[case(1024)]
+#[case(1024 * 16)]
+#[case(1024 * 256)]
+#[case(1024 * 1024)]
+#[case(1024 * 1024 * 4)]
+#[case(1024 * 1024 * 16)]
+#[tokio::test]
+async fn test_UniStream_read_write(#[case] bytes: usize) {
+    let listener = {
+        let addr = "127.0.0.1:0".parse().unwrap();
+
+        UniSocket::new(&addr)
+            .unwrap()
+            .bind(&addr)
+            .unwrap()
+            .listen(u32::MAX)
+            .unwrap()
+    };
+
+    let server_addr = listener.local_addr().unwrap();
+
+    let server = tokio::spawn(test_UniStream_read_write_server(listener, bytes));
+    let client = tokio::spawn(test_UniStream_read_write_client(server_addr, bytes));
+
+    tokio::select! {
+        res = server => {
+            res.unwrap();
+        }
+        res = client => {
+            res.unwrap();
+        }
+        _ = tokio::time::sleep(Duration::from_secs(10)) => {
+            panic!("Test timed out!");
+        }
+    }
+}
+
+async fn test_UniStream_read_write_server(listener: UniListener, bytes: usize) {
+    loop {
+        let (mut accepted, peer_addr) = listener.accept().await.unwrap();
+
+        println!("[SERVER] Accepted connection from {peer_addr:?}");
+
+        tokio::spawn(async move {
+            let mut buf = vec![0u8; bytes];
+
+            accepted.read_exact(&mut buf).await.unwrap();
+            println!("[SERVER] Received {bytes} bytes, echoing back...");
+            accepted.write_all(&buf).await.unwrap();
+            println!("[SERVER] Echoed back {bytes} bytes");
+        });
+    }
+}
+
+async fn test_UniStream_read_write_client(echo_server_addr: UniAddr, bytes: usize) {
+    let mut socket = UniSocket::new(&echo_server_addr)
+        .unwrap()
+        .connect(&echo_server_addr)
+        .await
+        .unwrap();
+
+    let rand = &mut Rand::new();
+
+    let mut input = Vec::with_capacity(bytes);
+
+    input.resize_with(bytes, || rand.random_u32() as u8);
+
+    socket.write_all(&input).await.unwrap();
+
+    println!("[CLIENT] Sent {bytes} bytes, waiting for echo...");
+
+    let mut buf = vec![0u8; bytes];
+
+    socket.read_exact(&mut buf).await.unwrap();
+
+    println!("[CLIENT] Received echo");
+
+    assert_eq!(buf, input);
+}
+
+// https://github.com/engusmaze/frand, APACHE-2.0 Licensed
+struct Rand {
+    seed: u64,
+}
+
+impl Rand {
+    #[inline]
+    fn new() -> Self {
+        #[allow(unsafe_code)]
+        let [seed, b]: [u64; 2] = unsafe { std::mem::transmute(std::time::Instant::now()) };
+        let mut rand = Self { seed };
+        rand.mix(b);
+        rand
+    }
+
+    #[inline]
+    fn mix(&mut self, value: u64) {
+        self.seed = hash64(self.seed.wrapping_add(value) ^ value << 10);
+    }
+
+    #[inline]
+    fn random_u32(&mut self) -> u32 {
+        let value = self.seed.wrapping_add(12964901029718341801);
+        self.seed = value;
+        (value.wrapping_mul(18162115696561729952 ^ value) >> 32) as u32
+    }
+}
+
+#[inline(always)]
+const fn hash64(mut hash: u64) -> u64 {
+    hash = (hash ^ hash >> 32).wrapping_mul(4997996261773036203);
+    hash = (hash ^ hash >> 32).wrapping_mul(4997996261773036203);
+    hash ^ hash >> 32
 }

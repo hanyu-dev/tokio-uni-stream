@@ -6,7 +6,7 @@ rust-version = "1.71.0"
 authors = ["Hantong Chen <cxwdyx620@gmail.com>"]
 categories = ["network-programming"]
 description = """
-Cross-platform network socket abstraction providing a unified API for both TCP and Unix Domain Sockets.
+Async TCP / Unix Domain Socket abstraction, cross platform development friendly.
 """
 keywords = ["socket", "tcp", "unix", "stream", "tokio"]
 license = "MIT OR Apache-2.0"
@@ -20,15 +20,16 @@ targets = ["x86_64-unknown-linux-gnu"]
 [dependencies]
 libc = "0.2.178"
 socket2 = { version = "0.6.1", features = ["all"] }
-tokio = { version = "1.48.0", features = ["net", "time"] }
+tokio = { version = "1.48", features = ["net", "time"] }
 tokio-splice2 = { version = "0.3.2", optional = true }
-uni-addr = { version = "0.3.6", default-features = false, features = ["feat-tokio", "feat-socket2"] }
+uni-addr = { version = "0.3.7", default-features = false, features = ["feat-tokio", "feat-socket2"] }
 wrapper-lite = "0.4.0"
 
 [dev-dependencies]
+# console-subscriber = "0.5.0"
 network-interface = "2.0.3"
 rstest = { version = "0.26.1", default-features = false }
-tokio = { version = "1.48.0", features = ["io-util", "macros", "rt"] }
+tokio = { version = "1.48", features = ["io-util", "macros", "rt-multi-thread"] }
 
 [target.'cfg(target_os = "linux")'.dev-dependencies]
 uni-socket = { path = ".", features = ["splice"] }

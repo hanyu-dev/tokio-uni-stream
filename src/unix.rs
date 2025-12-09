@@ -16,11 +16,14 @@ use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 use tokio::time::sleep;
 use uni_addr::{UniAddr, UniAddrInner};
 
-/// An async [`Socket`].
-pub struct UniSocket<Ty = ()> {
-    inner: AsyncFd<Socket>,
-    ty: PhantomData<Ty>,
-}
+wrapper_lite::wrapper!(
+    #[wrapper_impl(AsRef)]
+    /// An async [`Socket`].
+    pub struct UniSocket<Ty = ()> {
+        inner: AsyncFd<Socket>,
+        ty: PhantomData<Ty>,
+    }
+);
 
 impl fmt::Debug for UniSocket {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -596,7 +599,7 @@ impl UniStream {
     ///
     /// Successive calls return the same data. This is accomplished by passing
     /// `MSG_PEEK` as a flag to the underlying `recv` system call.
-    pub async fn peek(&self, buf: &mut [MaybeUninit<u8>]) -> io::Result<usize> {
+    pub async fn peek(&mut self, buf: &mut [MaybeUninit<u8>]) -> io::Result<usize> {
         loop {
             let mut guard = self.inner.readable().await?;
 
@@ -727,7 +730,7 @@ impl UniStream {
         loop {
             let mut guard = self.inner.writable().await?;
 
-            match guard.try_io(|inner: &AsyncFd<Socket>| inner.get_ref().send(buf)) {
+            match guard.try_io(|inner| inner.get_ref().send(buf)) {
                 Ok(result) => return result,
                 Err(_would_block) => {}
             }
@@ -749,7 +752,7 @@ impl UniStream {
     ///
     /// This function will cause all pending and future I/O on the specified
     /// portions to return immediately with an appropriate value.
-    pub fn shutdown(&self, shutdown: Shutdown) -> io::Result<()> {
+    pub fn shutdown(&mut self, shutdown: Shutdown) -> io::Result<()> {
         match self.inner.get_ref().shutdown(shutdown) {
             Ok(()) => Ok(()),
             Err(e) if e.kind() == io::ErrorKind::NotConnected => Ok(()),
@@ -815,7 +818,7 @@ impl AsyncWrite for UniStream {
     }
 
     /// See [`shutdown`](Self::shutdown).
-    fn poll_shutdown(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+    fn poll_shutdown(mut self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
         Poll::Ready(self.shutdown(Shutdown::Write))
     }
 }
@@ -850,6 +853,7 @@ impl tokio_splice2::AsyncWriteFd for UniStream {
 impl tokio_splice2::IsNotFile for UniStream {}
 
 wrapper_lite::wrapper!(
+    #[wrapper_impl(AsRef<UniStream>)]
     #[derive(Debug)]
     /// An owned read half of a [`UniStream`].
     pub struct OwnedReadHalf(Arc<UniStream>);
@@ -868,6 +872,7 @@ impl AsyncRead for OwnedReadHalf {
 }
 
 wrapper_lite::wrapper!(
+    #[wrapper_impl(AsRef<UniStream>)]
     #[derive(Debug)]
     /// An owned write half of a [`UniStream`].
     pub struct OwnedWriteHalf(Arc<UniStream>);
@@ -892,12 +897,12 @@ impl AsyncWrite for OwnedWriteHalf {
 
     /// See [`shutdown`](UniStream::shutdown).
     fn poll_shutdown(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
-        Poll::Ready(self.inner.shutdown(Shutdown::Write))
+        Poll::Ready(self.inner.as_socket_ref().shutdown(Shutdown::Write))
     }
 }
 
 impl Drop for OwnedWriteHalf {
     fn drop(&mut self) {
-        let _ = self.inner.shutdown(Shutdown::Write);
+        let _ = self.inner.as_socket_ref().shutdown(Shutdown::Write);
     }
 }
